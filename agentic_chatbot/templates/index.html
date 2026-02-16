@@ -1,62 +1,163 @@
+
 <!DOCTYPE html>
 <html>
 <head>
     <title>FLOWAI Chatbot</title>
     <style>
-        body {
-            font-family: Arial;
-            background: #f4f4f4;
-            text-align: center;
-            padding: 40px;
-        }
+       /* ===== GLOBAL ===== */
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+}
 
-        #chatbox {
-            width: 400px;
-            height: 400px;
-            background: white;
-            margin: auto;
-            padding: 15px;
-            overflow-y: auto;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
+body{
+    height:100vh;
+    background: linear-gradient(135deg,#0f172a,#020617);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    color:white;
+}
 
-        input {
-            width: 300px;
-            padding: 10px;
-        }
+/* ===== MAIN CONTAINER ===== */
+.container{
+    width:600px;
+}
 
-        button {
-            padding: 10px 15px;
-            cursor: pointer;
-        }
+/* ===== TITLE ===== */
+h2{
+    margin-bottom:15px;
+    font-weight:600;
+    letter-spacing:1px;
+    color:#e2e8f0;
+}
 
-        .user {
-            text-align: right;
-            color: blue;
-            margin: 5px 0;
-        }
+/* ===== CHATBOX ===== */
+#chatbox{
+    height:420px;
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(14px);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:18px;
+    padding:18px;
+    overflow-y:auto;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    box-shadow:0 10px 35px rgba(0,0,0,0.6);
+}
 
-        .bot {
-            text-align: left;
-            color: green;
-            margin: 5px 0;
-        }
+/* scrollbar */
+#chatbox::-webkit-scrollbar{
+    width:6px;
+}
+#chatbox::-webkit-scrollbar-thumb{
+    background:#334155;
+    border-radius:10px;
+}
+
+/* ===== MESSAGES ===== */
+.user,.bot{
+    max-width:75%;
+    padding:10px 14px;
+    border-radius:16px;
+    font-size:14px;
+    line-height:1.4;
+    animation:fadeIn .2s ease-in;
+}
+
+/* user bubble */
+.user{
+    align-self:flex-end;
+    background:linear-gradient(135deg,#3b82f6,#2563eb);
+    color:white;
+    border-bottom-right-radius:4px;
+}
+
+/* bot bubble */
+.bot{
+    align-self:flex-start;
+    background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.08);
+    color:#e2e8f0;
+    border-bottom-left-radius:4px;
+}
+
+/* ===== INPUT AREA ===== */
+.input-area{
+    margin-top:12px;
+    display:flex;
+    gap:10px;
+}
+
+input{
+    flex:1;
+    padding:12px 14px;
+    border-radius:14px;
+    border:none;
+    outline:none;
+    background:rgba(255,255,255,0.08);
+    color:white;
+    font-size:14px;
+}
+
+input::placeholder{
+    color:#94a3b8;
+}
+
+/* ===== BUTTON ===== */
+button{
+    padding:12px 18px;
+    border:none;
+    border-radius:14px;
+    background:linear-gradient(135deg,#22c55e,#16a34a);
+    color:white;
+    font-weight:600;
+    cursor:pointer;
+    transition:0.2s;
+}
+
+button:hover{
+    transform:translateY(-1px);
+    box-shadow:0 6px 16px rgba(34,197,94,0.4);
+}
+
+button:active{
+    transform:scale(0.96);
+}
+
+/* ===== ANIMATION ===== */
+@keyframes fadeIn{
+    from{opacity:0; transform:translateY(6px);}
+    to{opacity:1; transform:translateY(0);}
+}
+
     </style>
 </head>
 <body>
 
+    <div class="container">
     <h2>FLOWAI Agentic Chatbot</h2>
 
     <div id="chatbox"></div>
 
-    <br>
+    <div class="input-area">
+        <input type="text" id="message" placeholder="Type a message..." />
+        <button onclick="sendMessage()">Send</button>
+    </div>
+</div>
 
-    <input type="text" id="message" placeholder="Type a message..." />
-    <button onclick="sendMessage()">Send</button>
 
     <script>
         let conversation_id = "1";
+
+        document.getElementById("message").addEventListener("keypress", function(e) {
+            if (e.key === "Enter") {
+                sendMessage();
+            }
+        });
 
         async function sendMessage() {
             const messageInput = document.getElementById("message");
@@ -89,3 +190,4 @@
 
 </body>
 </html>
+
