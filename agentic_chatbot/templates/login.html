@@ -1,7 +1,124 @@
-<h2>Login</h2>
-<form method="POST">
-    <input type="text" name="username" placeholder="Username" required><br><br>
-    <input type="password" name="password" placeholder="Password" required><br><br>
-    <button type="submit">Login</button>
-</form>
-<a href="/register">Register</a>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+
+    <!-- Correct place -->
+    <link rel="stylesheet" href="/static/style.css">
+
+</head>
+<body>
+
+<div class="card">
+    <h2>Login</h2>
+
+    <form method="POST">
+        <div class="input-group">
+            <input type="text" name="username" placeholder="Username" required>
+        </div>
+
+        <div class="input-group">
+            <input type="password" name="password" placeholder="Password" required>
+        </div>
+
+        <button type="submit">Login</button>
+    </form>
+
+    <a href="/register">Create account</a>
+</div>
+<style>
+
+/* ===== GLOBAL ===== */
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:'Segoe UI',Tahoma,sans-serif;
+}
+
+body{
+    height:100vh;
+    background:linear-gradient(135deg,#0f172a,#020617);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    color:#e2e8f0;
+}
+
+/* ===== CARD ===== */
+.card{
+    width:380px;
+    padding:30px;
+    border-radius:18px;
+    background:rgba(255,255,255,0.05);
+    backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow:0 10px 40px rgba(0,0,0,0.6);
+}
+
+h2{
+    text-align:center;
+    margin-bottom:20px;
+    font-weight:600;
+}
+
+/* ===== INPUTS ===== */
+.input-group{
+    margin-bottom:18px;
+}
+
+input{
+    width:100%;
+    padding:12px 14px;
+    border-radius:12px;
+    border:none;
+    outline:none;
+    background:rgba(255,255,255,0.08);
+    color:white;
+    font-size:14px;
+}
+
+input:focus{
+    border:1px solid #3b82f6;
+    box-shadow:0 0 8px rgba(59,130,246,0.5);
+}
+
+::placeholder{
+    color:#94a3b8;
+}
+
+/* ===== BUTTON ===== */
+button{
+    width:100%;
+    padding:12px;
+    border:none;
+    border-radius:12px;
+    background:linear-gradient(135deg,#22c55e,#16a34a);
+    color:white;
+    font-weight:600;
+    cursor:pointer;
+    transition:0.2s;
+}
+
+button:hover{
+    transform:translateY(-1px);
+    box-shadow:0 6px 16px rgba(34,197,94,0.4);
+}
+
+/* ===== LINK ===== */
+a{
+    display:block;
+    text-align:center;
+    margin-top:15px;
+    color:#38bdf8;
+    text-decoration:none;
+}
+
+a:hover{
+    text-decoration:underline;
+}
+
+</style>
+</body>
+</html>

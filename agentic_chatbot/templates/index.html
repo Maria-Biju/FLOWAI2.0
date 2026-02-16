@@ -127,6 +127,27 @@ button:hover{
 button:active{
     transform:scale(0.96);
 }
+/* ===== LOGOUT BUTTON TOP RIGHT ===== */
+.logout-btn{
+    position:absolute;
+    top:20px;
+    right:30px;
+    padding:8px 14px;
+    border-radius:10px;
+    background:linear-gradient(135deg,#ef4444,#dc2626);
+    color:white;
+    font-size:14px;
+    text-decoration:none;
+    font-weight:500;
+    box-shadow:0 4px 12px rgba(239,68,68,0.4);
+    transition:0.2s;
+}
+
+.logout-btn:hover{
+    transform:translateY(-2px);
+    box-shadow:0 6px 16px rgba(239,68,68,0.6);
+}
+
 
 /* ===== ANIMATION ===== */
 @keyframes fadeIn{
@@ -139,6 +160,7 @@ button:active{
 <body>
 
     <div class="container">
+    <button class="logout-btn" onclick="logOut()">Logout</button>
     <h2>FLOWAI Agentic Chatbot</h2>
 
     <div id="chatbox"></div>
@@ -158,6 +180,9 @@ button:active{
                 sendMessage();
             }
         });
+        logOut = () => {
+            window.location.href = "/logout";
+        }
 
         async function sendMessage() {
             const messageInput = document.getElementById("message");

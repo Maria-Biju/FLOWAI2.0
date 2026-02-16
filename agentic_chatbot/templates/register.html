@@ -1,7 +1,201 @@
-<h2>Register</h2>
-<form method="POST">
-    <input type="text" name="username" placeholder="Username" required><br><br>
-    <input type="password" name="password" placeholder="Password" required><br><br>
-    <button type="submit">Register</button>
-</form>
-<a href="/login">Login</a>
+<!DOCTYPE html>
+<html>
+<head>
+<title>Register</title>
+
+<style>
+
+/* ===== GLOBAL ===== */
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:'Segoe UI',Tahoma,sans-serif;
+}
+
+body{
+    height:100vh;
+    background:linear-gradient(135deg,#0f172a,#020617);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    color:#e2e8f0;
+}
+
+/* ===== CARD ===== */
+.card{
+    width:380px;
+    padding:30px;
+    border-radius:18px;
+    background:rgba(255,255,255,0.05);
+    backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow:0 10px 40px rgba(0,0,0,0.6);
+}
+
+h2{
+    text-align:center;
+    margin-bottom:20px;
+    font-weight:600;
+}
+
+/* ===== INPUTS ===== */
+.input-group{
+    margin-bottom:18px;
+}
+
+input{
+    width:100%;
+    padding:12px 14px;
+    border-radius:12px;
+    border:none;
+    outline:none;
+    background:rgba(255,255,255,0.08);
+    color:white;
+    font-size:14px;
+}
+
+input:focus{
+    border:1px solid #3b82f6;
+    box-shadow:0 0 8px rgba(59,130,246,0.5);
+}
+
+::placeholder{
+    color:#94a3b8;
+}
+
+/* ===== BUTTON ===== */
+button{
+    width:100%;
+    padding:12px;
+    border:none;
+    border-radius:12px;
+    background:linear-gradient(135deg,#22c55e,#16a34a);
+    color:white;
+    font-weight:600;
+    cursor:pointer;
+    transition:0.2s;
+}
+
+button:hover{
+    transform:translateY(-1px);
+    box-shadow:0 6px 16px rgba(34,197,94,0.4);
+}
+
+/* ===== LINKS ===== */
+a{
+    display:block;
+    text-align:center;
+    margin-top:15px;
+    color:#38bdf8;
+    text-decoration:none;
+}
+
+a:hover{ text-decoration:underline; }
+
+/* ===== ERRORS ===== */
+.error{
+    color:#ef4444;
+    font-size:13px;
+    margin-top:6px;
+}
+
+/* ===== PASSWORD STRENGTH BAR ===== */
+.strength{
+    height:6px;
+    border-radius:10px;
+    margin-top:6px;
+    background:#1e293b;
+}
+
+.strength div{
+    height:100%;
+    width:0%;
+    border-radius:10px;
+    transition:0.3s;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="card">
+    <h2>Create Account</h2>
+
+    <form method="POST" onsubmit="return validatePassword()">
+
+        <div class="input-group">
+            <input type="text" name="username" placeholder="Username" required>
+        </div>
+
+        <div class="input-group">
+            <input type="password" id="password" name="password"
+                   placeholder="Password"
+                   onkeyup="checkStrength()" required>
+
+            <div class="strength"><div id="bar"></div></div>
+            <div id="rules" class="error"></div>
+        </div>
+
+        <div class="input-group">
+            <input type="password" id="confirm"
+                   placeholder="Confirm Password" required>
+            <div id="match" class="error"></div>
+        </div>
+
+        <button type="submit">Register</button>
+    </form>
+
+    <a href="/login">Already have account?</a>
+</div>
+
+<script>
+
+/* PASSWORD STRENGTH CHECK */
+function checkStrength(){
+    let pass=document.getElementById("password").value;
+    let bar=document.getElementById("bar");
+    let strength=0;
+
+    if(pass.length>=8) strength++;
+    if(/[A-Z]/.test(pass)) strength++;
+    if(/[a-z]/.test(pass)) strength++;
+    if(/[0-9]/.test(pass)) strength++;
+    if(/[^A-Za-z0-9]/.test(pass)) strength++;
+
+    let colors=["red","orange","yellow","#22c55e","#16a34a"];
+    bar.style.width=(strength*20)+"%";
+    bar.style.background=colors[strength-1] || "transparent";
+}
+
+/* FINAL VALIDATION BEFORE SUBMIT */
+function validatePassword(){
+
+    let pass=document.getElementById("password").value;
+    let confirm=document.getElementById("confirm").value;
+    let rules=document.getElementById("rules");
+    let match=document.getElementById("match");
+
+    rules.innerHTML="";
+    match.innerHTML="";
+
+    let pattern=/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
+
+    if(!pattern.test(pass)){
+        rules.innerHTML="Password must contain uppercase, lowercase, number, special character and 8+ characters";
+        return false;
+    }
+
+    if(pass!==confirm){
+        match.innerHTML="Passwords do not match";
+        return false;
+    }
+
+    return true;
+}
+
+</script>
+
+</body>
+</html>
