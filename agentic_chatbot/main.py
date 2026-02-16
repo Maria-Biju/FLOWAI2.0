@@ -1,18 +1,26 @@
-from fastapi import FastAPI
-from agent.orchestrator import AgentOrchestrator
-from models.chat_request import ChatRequest
+from dotenv import load_dotenv
+load_dotenv()
 
-app = FastAPI()
+from flask import Flask, request, jsonify, render_template
+from agent.orchestrator import AgentOrchestrator
+
+app = Flask(__name__)
 agent = AgentOrchestrator()
 
-@app.post("/chat")
-def chat(request: ChatRequest):
-    print("User:", request.message)
+@app.route("/")
+def home():
+    return render_template("index.html")
 
-    reply = agent.handle_message(
-        request.conversation_id,
-        request.message
-    )
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.get_json()
 
-    print("LLM:", reply)
-    return {"reply": reply}
+    conversation_id = data.get("conversation_id")
+    message = data.get("message")
+
+    reply = agent.handle_message(conversation_id, message)
+
+    return jsonify({"reply": reply})
+
+if __name__ == "__main__":
+    app.run(debug=True, port=8000)

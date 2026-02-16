@@ -1,6 +1,7 @@
 import os
 from openai import OpenAI
 
+
 class LLMClient:
     def __init__(self):
         key = os.getenv("OPENAI_API_KEY", "").strip()
