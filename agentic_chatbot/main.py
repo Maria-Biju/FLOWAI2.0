@@ -1,10 +1,17 @@
 from dotenv import load_dotenv
 load_dotenv()
-
+from llm.client import LLMClient
+from agent.orchestrator import AgentOrchestrator
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_login import (
+    LoginManager, UserMixin,
+    login_user, login_required,
+    logout_user, current_user
+)
 from flask_bcrypt import Bcrypt
+from sqlalchemy.exc import IntegrityError
+
 from agent.orchestrator import AgentOrchestrator
 
 app = Flask(__name__)
@@ -14,10 +21,10 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
+
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
-
-agent = AgentOrchestrator()
+agent = AgentOrchestrator(LLMClient())
 
 # ----------------------
 # Database Model
@@ -29,12 +36,12 @@ class User(db.Model, UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
+    # Legacy warning is fine for now; can be upgraded later
     return User.query.get(int(user_id))
 
 # ----------------------
 # Routes
 # ----------------------
-
 @app.route("/")
 @login_required
 def home():
@@ -43,13 +50,33 @@ def home():
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
-    data = request.get_json()
-    conversation_id = data.get("conversation_id")
-    message = data.get("message")
+    data = request.get_json(silent=True) or {}
+    conversation_id = data.get("conversation_id", "default")
+    message = (data.get("message") or "").strip()
 
-    reply = agent.handle_message(conversation_id, message)
+    if not message:
+        return jsonify({"type": "error", "reply": "Message cannot be empty."}), 400
 
-    return jsonify({"reply": reply})
+    try:
+        result = agent.handle_message(conversation_id, message)
+
+        # If agent returns plain string
+        if isinstance(result, str):
+            return jsonify({"type": "message", "reply": result})
+
+        # If agent returns dict (structured tool call / response)
+        if isinstance(result, dict):
+            # ensure at least a minimal shape
+            if "type" not in result:
+                result["type"] = "message"
+            if "reply" not in result:
+                result["reply"] = ""
+            return jsonify(result)
+
+        return jsonify({"type": "error", "reply": "Invalid agent response type."}), 500
+
+    except Exception as e:
+        return jsonify({"type": "error", "reply": f"Agent crashed: {e}"}), 500
 
 # ----------------------
 # Register
@@ -57,14 +84,29 @@ def chat():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+        username = (request.form.get("username") or "").strip()
+        password = (request.form.get("password") or "").strip()
+
+        if not username or not password:
+            flash("Username and password are required.")
+            return redirect(url_for("register"))
+
+        # Pre-check
+        existing = User.query.filter_by(username=username).first()
+        if existing:
+            flash("Username already exists. Try another one.")
+            return redirect(url_for("register"))
 
         hashed_pw = bcrypt.generate_password_hash(password).decode("utf-8")
-
         user = User(username=username, password=hashed_pw)
+
         db.session.add(user)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("Username already exists. Try another one.")
+            return redirect(url_for("register"))
 
         flash("Account created! Please login.")
         return redirect(url_for("login"))
@@ -77,16 +119,18 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+        username = (request.form.get("username") or "").strip()
+        password = (request.form.get("password") or "").strip()
 
         user = User.query.filter_by(username=username).first()
 
         if user and bcrypt.check_password_hash(user.password, password):
             login_user(user)
-            return redirect(url_for("home"))
-        else:
-            flash("Invalid credentials")
+            next_url = request.args.get("next")
+            return redirect(next_url or url_for("home"))
+
+        flash("Invalid credentials")
+        return redirect(url_for("login"))
 
     return render_template("login.html")
 
@@ -100,8 +144,8 @@ def logout():
     return redirect(url_for("login"))
 
 # ----------------------
-
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+
     app.run(debug=True, port=8000)
