@@ -1,83 +1,129 @@
 # agent/orchestrator.py
-import re
+from agent.state_store import get_state, clear_state
 from mcp.email_tool import send_email
 
 
 class AgentOrchestrator:
     def __init__(self, llm_client):
         self.llm = llm_client
-        # in-memory state: {conversation_id: {"pending_email": {...}}}
-        self.state = {}
 
     def handle_message(self, conversation_id, message: str):
-        conversation_id = conversation_id or "default"
+        cid = conversation_id or "default"
         msg = (message or "").strip()
 
-        # 1) CONFIRM -> send pending
-        if self._has_pending_email(conversation_id) and self._is_confirmation(msg):
-            pending = self.state[conversation_id]["pending_email"]
-            send_email(pending)
-            self.state[conversation_id] = {}
-            return {"type": "message", "reply": "Email sent successfully."}
+        if not msg:
+            return {"type": "message", "reply": "Please type a message."}
 
-        # 2) CANCEL -> discard pending
-        if self._has_pending_email(conversation_id) and self._is_cancellation(msg):
-            self.state[conversation_id] = {}
-            return {"type": "message", "reply": "Cancelled. Email was not sent."}
+        st = get_state(cid)
 
-        # 3) EDIT -> revise pending draft (do NOT send)
-        if self._has_pending_email(conversation_id) and self._looks_like_edit(msg):
-            current = self.state[conversation_id]["pending_email"]
+        # ---------- Pending email flow ----------
+        if st.pending_email:
+            pending = st.pending_email
 
-            # Ask LLM to revise based on existing draft + user changes
-            prompt = (
-                "Revise this email draft.\n\n"
-                f"CURRENT DRAFT:\n"
-                f"To: {current.get('to','')}\n"
-                f"Subject: {current.get('subject','')}\n"
-                f"Body:\n{current.get('body','')}\n\n"
-                f"USER CHANGES:\n{msg}\n\n"
-                "Return JSON with keys: to, subject, body."
-            )
+            # CONFIRM -> send
+            if self._is_confirmation(msg):
+                result = send_email(pending)
 
-            updated = self.llm.draft_email(prompt)
-            self.state[conversation_id] = {"pending_email": updated}
+                # Always clear pending state after attempting to send
+                st.pending_email = None
+                st.pending_action = None
 
-            return {"type": "message", "reply": self._format_preview(updated)}
+                if result.get("status") == "success":
+                    return {"type": "message", "reply": "Email sent successfully."}
+                return {"type": "message", "reply": f"Email failed: {result.get('message')}"}
 
-        # 4) EMAIL REQUEST -> draft first, store, ask confirm
+            # CANCEL -> discard pending
+            if self._is_cancellation(msg):
+                st.pending_email = None
+                st.pending_action = None
+                return {"type": "message", "reply": "Cancelled. Email was not sent."}
+
+            # EDIT -> revise draft
+            if self._looks_like_edit(msg):
+                updated = self.llm.draft_email(msg, existing_draft=pending)
+
+                # harden output
+                updated = {
+                    "to": (updated.get("to") or pending.get("to") or "").strip(),
+                    "subject": (updated.get("subject") or pending.get("subject") or "").strip(),
+                    "body": (updated.get("body") or pending.get("body") or "").strip(),
+                }
+
+                st.pending_email = updated
+                st.pending_action = "email_confirm"
+                return {"type": "message", "reply": self._format_preview(updated)}
+
+            # Anything else while pending -> guide user
+            return {
+                "type": "message",
+                "reply": (
+                    "You have a draft ready.\n"
+                    "Reply with: confirm (send), edit <changes>, or cancel.\n\n"
+                    + self._format_preview(pending)
+                ),
+            }
+
+        # ---------- New email request ----------
         if self._looks_like_email_request(msg):
             draft = self.llm.draft_email(msg)
-            self.state[conversation_id] = {"pending_email": draft}
+
+            # harden draft
+            draft = {
+                "to": (draft.get("to") or "").strip(),
+                "subject": (draft.get("subject") or "").strip(),
+                "body": (draft.get("body") or "").strip(),
+            }
+
+            st.pending_email = draft
+            st.pending_action = "email_confirm"
             return {"type": "message", "reply": self._format_preview(draft)}
 
-        # 5) NORMAL CHAT -> return LLM dict directly
-        return self.llm.generate_reply(msg)
+        # ---------- Normal chat ----------
+        out = self.llm.generate_reply(msg)
+        if isinstance(out, dict) and "type" in out and "reply" in out:
+            return out
+        return {"type": "message", "reply": str(out)}
 
     # ---------------- helpers ----------------
 
-    def _has_pending_email(self, conversation_id):
-        return bool(self.state.get(conversation_id, {}).get("pending_email"))
-
-    def _is_confirmation(self, msg: str):
+    def _is_confirmation(self, msg: str) -> bool:
         m = msg.lower().strip()
         return m in {"confirm", "yes", "send", "ok", "okay", "go ahead", "sure"}
 
-    def _is_cancellation(self, msg: str):
+    def _is_cancellation(self, msg: str) -> bool:
         m = msg.lower().strip()
         return m in {"cancel", "no", "stop", "dont send", "don't send", "discard"}
 
-    def _looks_like_email_request(self, msg: str):
+    def _looks_like_email_request(self, msg: str) -> bool:
         m = msg.lower()
         return (
             m.startswith("send email")
             or m.startswith("draft email")
             or "send an email" in m
             or "send email to" in m
+            or "email to" in m
         )
 
-    def _looks_like_edit(self, msg: str):
-        return msg.lower().startswith("edit")
+    def _looks_like_edit(self, msg: str) -> bool:
+        m = msg.lower().strip()
+
+    # explicit edit
+        if m == "edit" or m.startswith("edit "):
+            return True
+
+    # common edit intents (short/long/formal, rewrite, etc.)
+        edit_phrases = [
+            "change subject", "update subject", "make subject", "subject more", "rewrite subject",
+            "change the subject", "update the subject", "make the subject",
+            "rewrite the body", "change body", "update body",
+            "make it shorter", "make it short", "shorten", "make it concise", "reduce it",
+            "make it longer", "expand it",
+            "make it formal", "make it more formal", "formalize",
+            "rewrite", "rephrase", "polish",
+            "change recipient", "update recipient", "change to ", "update to ",
+    ]
+
+        return any(p in m for p in edit_phrases)
 
     def _format_preview(self, draft: dict) -> str:
         return (

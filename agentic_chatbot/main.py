@@ -1,7 +1,9 @@
+# main.py
+import os
 from dotenv import load_dotenv
+
 load_dotenv()
-from llm.client import LLMClient
-from agent.orchestrator import AgentOrchestrator
+
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -12,11 +14,17 @@ from flask_login import (
 from flask_bcrypt import Bcrypt
 from sqlalchemy.exc import IntegrityError
 
+from llm.client import LLMClient
 from agent.orchestrator import AgentOrchestrator
+#from agent.scheduler import start_scheduler  # make sure this exists
 
+
+# ----------------------
+# App Config
+# ----------------------
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "supersecretkey"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///users.db"
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "supersecretkey")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///users.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
@@ -24,20 +32,27 @@ bcrypt = Bcrypt(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
-agent = AgentOrchestrator(LLMClient())
+
+# LLM + Agent
+llm_client = LLMClient()
+agent = AgentOrchestrator(llm_client)
+
 
 # ----------------------
 # Database Model
 # ----------------------
 class User(db.Model, UserMixin):
+    __tablename__ = "user"
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
 
+
 @login_manager.user_loader
 def load_user(user_id):
-    # Legacy warning is fine for now; can be upgraded later
+    # Legacy warning is fine for now; can be upgraded later to db.session.get(User, id)
     return User.query.get(int(user_id))
+
 
 # ----------------------
 # Routes
@@ -47,11 +62,12 @@ def load_user(user_id):
 def home():
     return render_template("index.html", username=current_user.username)
 
+
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
     data = request.get_json(silent=True) or {}
-    conversation_id = data.get("conversation_id", "default")
+    conversation_id = data.get("conversation_id") or str(current_user.id) or "default"
     message = (data.get("message") or "").strip()
 
     if not message:
@@ -64,19 +80,17 @@ def chat():
         if isinstance(result, str):
             return jsonify({"type": "message", "reply": result})
 
-        # If agent returns dict (structured tool call / response)
+        # If agent returns dict (structured)
         if isinstance(result, dict):
-            # ensure at least a minimal shape
-            if "type" not in result:
-                result["type"] = "message"
-            if "reply" not in result:
-                result["reply"] = ""
+            result.setdefault("type", "message")
+            result.setdefault("reply", "")
             return jsonify(result)
 
         return jsonify({"type": "error", "reply": "Invalid agent response type."}), 500
 
     except Exception as e:
         return jsonify({"type": "error", "reply": f"Agent crashed: {e}"}), 500
+
 
 # ----------------------
 # Register
@@ -91,9 +105,8 @@ def register():
             flash("Username and password are required.")
             return redirect(url_for("register"))
 
-        # Pre-check
-        existing = User.query.filter_by(username=username).first()
-        if existing:
+        # Pre-check to avoid IntegrityError where possible
+        if User.query.filter_by(username=username).first():
             flash("Username already exists. Try another one.")
             return redirect(url_for("register"))
 
@@ -112,6 +125,7 @@ def register():
         return redirect(url_for("login"))
 
     return render_template("register.html")
+
 
 # ----------------------
 # Login
@@ -134,6 +148,7 @@ def login():
 
     return render_template("login.html")
 
+
 # ----------------------
 # Logout
 # ----------------------
@@ -143,9 +158,12 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+
+# ----------------------
+# Boot
 # ----------------------
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
+   with app.app_context():
+    db.create_all()
 
     app.run(debug=True, port=8000)
