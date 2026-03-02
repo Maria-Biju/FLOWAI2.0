@@ -20,6 +20,16 @@ class LLMClient:
         self.timeout = int(os.getenv("OLLAMA_TIMEOUT", "180"))
         self.keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "30s")
 
+    def fetch_tools_metadata(self):
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "tools/list",
+            "id": 1
+        }
+
+        r = requests.post("http://127.0.0.1:8001/", json=payload)
+        return r.json()["result"]["tools"]
+
     # -----------------------
     # Ollama Call
     # -----------------------
@@ -31,7 +41,7 @@ class LLMClient:
             "keep_alive": self.keep_alive,
             "format": "json",  # 🔥 Force strict JSON
             "options": {
-                "temperature": 0.2,
+                "temperature": 0.0,
                 "num_predict": 200,
                 "num_ctx": 2048,
             },
@@ -63,47 +73,48 @@ class LLMClient:
     # -----------------------
     # MAIN AGENT ENTRY
     # -----------------------
-    def process(self, message: str) -> Dict[str, Any]:
-        """
-        Returns either:
-        {"type":"message","reply":"..."}
-        OR
-        {"type":"tool_call","tool":"...","arguments":{...}}
-        """
+    def process(self, message: str):
 
-        system_prompt = """
+        tools = self.fetch_tools_metadata()
+
+        tool_descriptions = "\n".join([
+            f"- {t['name']}: {t['description']}"
+            for t in tools
+        ])
+
+        system_prompt = f"""
 You are FLOWAI Agent.
 
-Decide whether to respond normally or call a tool.
+You MUST call a tool when the user request requires external data or stored information.
 
 Available tools:
-- send_email(to, subject, body)
-- save_note(title, content)
-- set_reminder(title, message, remind_at)
-- notify(title, message)
+{tool_descriptions}
 
-If tool is required, return ONLY:
+You MUST respond ONLY in valid JSON.
+No explanations.
+No conversational text.
 
-{
+If tool is required, respond EXACTLY like:
+
+{{
   "type": "tool_call",
   "tool": "tool_name",
-  "arguments": { ... }
-}
+  "arguments": {{ ... }}
+}}
 
-If normal reply, return ONLY:
+If no tool is required:
 
-{
+{{
   "type": "message",
   "reply": "..."
-}
+}}
 
-Rules:
-- Strict JSON only
-- No markdown
-- No extra text
+Never describe calling a tool.
+Never say you will call a tool.
+Return JSON only.
 """
 
-        prompt = system_prompt + "\nUser: " + message.strip()
+        prompt = system_prompt + "\nUser: " + message
 
         try:
             text = self._post_ollama(prompt)

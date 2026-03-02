@@ -38,3 +38,18 @@ def send_email(args: dict):
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+    
+TOOL = {
+    "name": "send_email",
+    "description": "Send an email to a recipient",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "to": {"type": "string", "description": "Recipient email address"},
+            "subject": {"type": "string", "description": "Email subject"},
+            "body": {"type": "string", "description": "Email content"}
+        },
+        "required": ["to", "subject", "body"]
+    },
+    "handler": send_email
+}
