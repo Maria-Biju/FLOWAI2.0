@@ -2,6 +2,8 @@
 
 from agent.state_store import get_state
 from mcp.client import MCPClient
+from agent.workflow_store import create_workflow
+from agent.workflow_executor import WorkflowExecutor
 
 
 class AgentOrchestrator:
@@ -9,6 +11,7 @@ class AgentOrchestrator:
     def __init__(self, llm_client):
         self.llm = llm_client
         self.mcp = MCPClient()
+        self.executor = WorkflowExecutor(self.mcp)
 
     def handle_message(self, conversation_id, message: str):
 
@@ -28,28 +31,39 @@ class AgentOrchestrator:
                 action = st.pending_action
                 payload = st.pending_payload
 
-                result = self.mcp.call_tool(action, payload)
+                if action == "run_workflow":
+                    result = self.executor.run(payload)
 
-                # Always clear state after execution
+                else:
+                    result = self.mcp.call_tool(action, payload)
+
                 st.pending_action = None
                 st.pending_payload = None
 
                 if result.get("status") == "success":
-                    reply = (
-                        result.get("text")
-                        or result.get("answer")
-                        or result.get("message")
-                        or "Action completed successfully."
-                    )
-                    return {"type": "message", "reply": reply}
+                    return {"type": "message", "reply": result.get("message")}
 
-                return {
-                    "type": "message",
-                    "reply": f"Action failed: {result.get('message', 'Unknown error')}"
-                }
+                return {"type": "message", "reply": f"Action failed: {result.get('message')}"}
 
         # ---------- LLM Agent Decision ----------
         result = self.llm.process(msg)
+
+
+        # Workflow plan from LLM
+        if result.get("type") == "workflow":
+
+            workflow = create_workflow(result["steps"])
+
+            st.pending_action = "run_workflow"
+            st.pending_payload = workflow
+
+            return {
+                "type": "message",
+                "reply": (
+                    f"Workflow created with {len(workflow['steps'])} steps.\n"
+                    "Reply confirm to execute or cancel."
+                )
+            }
 
         # Tool call requested by LLM
         if result.get("type") == "tool_call":

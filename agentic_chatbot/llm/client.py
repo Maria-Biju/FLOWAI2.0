@@ -16,7 +16,7 @@ class LLMClient:
 
     def __init__(self):
         self.ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-        self.ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:1b-q4_0")
+        self.ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
         self.timeout = int(os.getenv("OLLAMA_TIMEOUT", "180"))
         self.keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "30s")
 
@@ -77,106 +77,76 @@ class LLMClient:
 
         tools = self.fetch_tools_metadata()
 
-        tool_descriptions = "\n".join([
-            f"- {t['name']}: {t['description']}"
-            for t in tools
-        ])
+        tool_descriptions = ""
+
+        for t in tools:
+
+            tool_descriptions += f"\n{t['name']}\n"
+            tool_descriptions += f"description: {t['description']}\n"
+            tool_descriptions += "arguments:\n"
+
+            props = t["schema"]["properties"]
+
+            tool_descriptions += json.dumps(props, indent=2)
+            tool_descriptions += "\n\n"
 
         system_prompt = f"""
 You are FLOWAI Agent.
 
-You are connected to external tools.
-You NEVER execute actions yourself.
-You NEVER describe performing actions.
-You NEVER restate what the user is doing.
-
-If the user requests any real-world action such as:
-- sending email
-- saving notes
-- retrieving notes
-- reading files
-- getting system info
-- setting reminders
-
-You MUST respond ONLY with valid JSON in this exact format:
-
-{{
-  "type": "tool_call",
-  "tool": "exact_tool_name",
-  "arguments": {{ ... }}
-}}
-
-Rules:
-- Do NOT explain.
-- Do NOT describe the action.
-- Do NOT restate the request.
-- Do NOT say "You are sending..."
-- Do NOT say "Email sent".
-- Do NOT say anything except JSON.
-- Output must start with '{{' and end with '}}'.
-- If tool is required, JSON must contain "type":"tool_call".
-
-Only return:
-
-For tool:
-{{
-  "type": "tool_call",
-  "tool": "tool_name",
-  "arguments": {{ ... }}
-}}
-
-For normal chat:
-{{
-  "type": "message",
-  "reply": "..."
-}}
-
 Available tools:
 {tool_descriptions}
 
-You must decide carefully whether a tool is required.
+You MUST respond with ONLY valid JSON.
+Do NOT include explanations.
+Do NOT include markdown.
+Do NOT include text before or after the JSON.
+Only include tools that are strictly required to complete the task.
+Do NOT add unnecessary tools.
+Do NOT add steps unrelated to the user's request.
 
-DO NOT call a tool for general knowledge questions.
-Examples of general knowledge questions:
-- What is the tallest mountain?
-- Who is the president of India?
-- What is FastAPI?
-- Explain quantum computing.
+Allowed formats:
 
-These must be answered directly using a normal message.
+For multi-step tasks:
 
-Call google_search ONLY when:
-- The question requires up-to-date information
-- The question asks for "latest", "current", "today", or recent events
-- The user explicitly says "search"
+{{
+ "type": "workflow",
+ "steps": [
+  {{
+   "step": 1,
+   "tool": "tool_name",
+   "arguments": {{}}
+  }}
+ ]
+}}
 
-Call send_email ONLY when:
-- The user explicitly requests sending an email.
+For single tool calls:
 
-Call google_search ONLY if the question requires
-up-to-date, recent, or real-time information.
-If the question can be answered without internet access,
-you must NOT call google_search.
+{{
+ "type": "tool_call",
+ "tool": "tool_name",
+ "arguments": {{}}
+}}
 
-Do NOT call google_search for:
-- General knowledge
-- Historical facts
-- Definitions
-- Basic science facts
+For normal chat:
 
+{{
+ "type": "message",
+ "reply": "..."
+}}
+If the request requires using information from one tool in another tool,
+you MUST return a workflow instead of a single tool call.
+When a tool produces information that will be used in another step,
+reference it using {{step1.field}}.
 Example:
-- "What is the tallest mountain?" → answer directly.
-- "What is the latest news about Everest?" → use google_search.
-
-Never call send_email for informational questions.
-Never invent email addresses.
-You must decide carefully whether a tool is required.
+Step1: google_search
+Step2: send_email with body "{{step1.text}}"
 """
 
         prompt = system_prompt + "\nUser: " + message
 
         try:
             text = self._post_ollama(prompt)
+            print("LLM RAW OUTPUT:\n", text)
             obj = self._extract_json(text)
 
             if not obj:
@@ -186,6 +156,8 @@ You must decide carefully whether a tool is required.
                 return obj
 
             if obj.get("type") == "message":
+                return obj
+            if obj.get("type") == "workflow":
                 return obj
 
             return {"type": "message", "reply": "Invalid response format."}
