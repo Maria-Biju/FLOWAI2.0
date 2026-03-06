@@ -5,6 +5,8 @@ from email.message import EmailMessage
 
 def send_email(args: dict):
     try:
+
+        print("EMAIL ARGS:", args)
         host = os.getenv("SMTP_HOST")
         port = int(os.getenv("SMTP_PORT", "587"))
         user = os.getenv("SMTP_USER")

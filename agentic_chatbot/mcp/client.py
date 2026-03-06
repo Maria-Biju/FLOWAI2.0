@@ -23,19 +23,20 @@ class MCPClient:
             data = r.json()
 
             if "error" in data:
-                return {"status": "error", "message": data["error"]["message"]}
+                return {
+                    "status": "error",
+                    "message": data["error"].get("message", "Unknown error")
+                }
 
-            return data.get("result", {})
+            result = data.get("result")
+
+            if result is None:
+                return {
+                    "status": "error",
+                    "message": "Tool returned no result"
+                }
+
+            return result
 
         except Exception as e:
             return {"status": "error", "message": str(e)}
-
-    def list_tools(self):
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "tools/list",
-            "id": 2
-        }
-
-        r = requests.post(self.base_url + "/", json=payload)
-        return r.json()

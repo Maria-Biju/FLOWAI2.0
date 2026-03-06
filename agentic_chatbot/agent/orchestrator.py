@@ -24,34 +24,29 @@ class AgentOrchestrator:
         if st.pending_action and st.pending_payload:
 
             if self._is_confirmation(msg):
-                result = self.mcp.call_tool(
-                    st.pending_action,
-                    st.pending_payload
-                )
 
+                action = st.pending_action
+                payload = st.pending_payload
+
+                result = self.mcp.call_tool(action, payload)
+
+                # Always clear state after execution
                 st.pending_action = None
                 st.pending_payload = None
 
                 if result.get("status") == "success":
-                    return {
-                        "type": "message",
-                        "reply": result.get("message", "Action completed successfully.")
-                    }
+                    reply = (
+                        result.get("text")
+                        or result.get("answer")
+                        or result.get("message")
+                        or "Action completed successfully."
+                    )
+                    return {"type": "message", "reply": reply}
 
                 return {
                     "type": "message",
-                    "reply": f"Action failed: {result.get('message')}"
+                    "reply": f"Action failed: {result.get('message', 'Unknown error')}"
                 }
-
-            if self._is_cancellation(msg):
-                st.pending_action = None
-                st.pending_payload = None
-                return {"type": "message", "reply": "Cancelled."}
-
-            return {
-                "type": "message",
-                "reply": "You have a pending action. Reply confirm or cancel."
-            }
 
         # ---------- LLM Agent Decision ----------
         result = self.llm.process(msg)
