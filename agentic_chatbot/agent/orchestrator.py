@@ -4,6 +4,9 @@ from agent.state_store import get_state
 from mcp.client import MCPClient
 from agent.workflow_store import create_workflow
 from agent.workflow_executor import WorkflowExecutor
+import json
+from models.workflow import Workflow, db
+from datetime import datetime
 
 
 class AgentOrchestrator:
@@ -52,17 +55,18 @@ class AgentOrchestrator:
         # Workflow plan from LLM
         if result.get("type") == "workflow":
 
-            workflow = create_workflow(result["steps"])
+            workflow = Workflow(
+                workflow_json=json.dumps(result),
+                status="pending",
+                next_run=datetime.utcnow()
+            )
 
-            st.pending_action = "run_workflow"
-            st.pending_payload = workflow
+            db.session.add(workflow)
+            db.session.commit()
 
             return {
                 "type": "message",
-                "reply": (
-                    f"Workflow created with {len(workflow['steps'])} steps.\n"
-                    "Reply confirm to execute or cancel."
-                )
+                "reply": f"Workflow scheduled (id={workflow.id})"
             }
 
         # Tool call requested by LLM

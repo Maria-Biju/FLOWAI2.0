@@ -17,6 +17,10 @@ from sqlalchemy.exc import IntegrityError
 from llm.client import LLMClient
 from agent.orchestrator import AgentOrchestrator
 #from agent.scheduler import start_scheduler  # make sure this exists
+from engine.scheduler import start_scheduler
+from models.db import db
+from engine.worker import worker_loop
+import threading
 
 
 # ----------------------
@@ -26,8 +30,9 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "supersecretkey")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///users.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+start_scheduler(app)
 
-db = SQLAlchemy(app)
+db.init_app(app)
 bcrypt = Bcrypt(app)
 
 login_manager = LoginManager(app)
@@ -163,7 +168,15 @@ def logout():
 # Boot
 # ----------------------
 if __name__ == "__main__":
-   with app.app_context():
-    db.create_all()
 
-    app.run(debug=True, port=8000)
+    with app.app_context():
+        db.create_all()
+
+    # Start worker thread
+    threading.Thread(
+        target=worker_loop,
+        args=(app,),
+        daemon=True
+    ).start()
+
+    app.run(debug=True, use_reloader=False, port=8000)

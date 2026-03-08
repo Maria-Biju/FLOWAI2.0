@@ -133,13 +133,35 @@ For normal chat:
  "type": "message",
  "reply": "..."
 }}
+
 If the request requires using information from one tool in another tool,
 you MUST return a workflow instead of a single tool call.
+
 When a tool produces information that will be used in another step,
 reference it using {{step1.field}}.
+
 Example:
-Step1: google_search
+Step1: google_search  
 Step2: send_email with body "{{step1.text}}"
+
+Workflows may optionally include a schedule field.
+
+Example:
+
+{{
+ "type": "workflow",
+ "schedule": {{
+   "type": "once",
+   "run_at": "ISO datetime"
+ }},
+ "steps": [
+  {{
+   "step": 1,
+   "tool": "tool_name",
+   "arguments": {...}
+  }}
+ ]
+}}
 """
 
         prompt = system_prompt + "\nUser: " + message
