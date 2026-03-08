@@ -1,4 +1,3 @@
-# mcp/mcp_sever.py
 from dotenv import load_dotenv
 import os
 
@@ -20,10 +19,13 @@ class JSONRPCRequest(BaseModel):
     id: Optional[int] = None
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.post("/")
 def handle_rpc(request: JSONRPCRequest):
-
-    # Validate JSON-RPC version
     if request.jsonrpc != "2.0":
         return {
             "jsonrpc": "2.0",
@@ -31,19 +33,13 @@ def handle_rpc(request: JSONRPCRequest):
             "id": request.id,
         }
 
-    # ---- tools/list ----
     if request.method == "tools/list":
-        
-
         return {
             "jsonrpc": "2.0",
-            "result": {
-                "tools": TOOLS_METADATA
-            },
+            "result": {"tools": TOOLS_METADATA},
             "id": request.id,
         }
 
-    # ---- tools/call ----
     if request.method == "tools/call":
         if not request.params:
             return {
@@ -64,13 +60,11 @@ def handle_rpc(request: JSONRPCRequest):
 
         try:
             result = TOOLS[tool_name](arguments)
-
             return {
                 "jsonrpc": "2.0",
                 "result": result,
                 "id": request.id,
             }
-
         except Exception as e:
             return {
                 "jsonrpc": "2.0",
@@ -78,7 +72,6 @@ def handle_rpc(request: JSONRPCRequest):
                 "id": request.id,
             }
 
-    # ---- Unknown Method ----
     return {
         "jsonrpc": "2.0",
         "error": {"code": -32601, "message": "Method not found"},

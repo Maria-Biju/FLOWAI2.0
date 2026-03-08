@@ -5,8 +5,6 @@ from email.message import EmailMessage
 
 def send_email(args: dict):
     try:
-
-        print("EMAIL ARGS:", args)
         host = os.getenv("SMTP_HOST")
         port = int(os.getenv("SMTP_PORT", "587"))
         user = os.getenv("SMTP_USER")
@@ -16,11 +14,18 @@ def send_email(args: dict):
         if not host or not user or not password:
             return {"status": "error", "message": "SMTP configuration missing"}
 
+        to_addr = args.get("to")
+        subject = args.get("subject")
+        body = args.get("body")
+
+        if not to_addr or not subject or not body:
+            return {"status": "error", "message": "Missing required arguments: to, subject, body"}
+
         msg = EmailMessage()
         msg["From"] = from_addr
-        msg["To"] = args.get("to")
-        msg["Subject"] = args.get("subject")
-        msg.set_content(args.get("body"))
+        msg["To"] = to_addr
+        msg["Subject"] = subject
+        msg.set_content(body)
 
         server = smtplib.SMTP(host, port, timeout=30)
         server.ehlo()
@@ -37,10 +42,10 @@ def send_email(args: dict):
             "status": "error",
             "message": "SMTP authentication failed. Use Gmail App Password."
         }
-
     except Exception as e:
         return {"status": "error", "message": str(e)}
-    
+
+
 TOOL = {
     "name": "send_email",
     "description": "Send an email to a recipient",
