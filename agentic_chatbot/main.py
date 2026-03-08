@@ -18,7 +18,6 @@ from llm.client import LLMClient
 from agent.orchestrator import AgentOrchestrator
 #from agent.scheduler import start_scheduler  # make sure this exists
 
-
 # ----------------------
 # App Config
 # ----------------------

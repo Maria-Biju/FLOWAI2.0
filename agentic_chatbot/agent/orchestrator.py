@@ -66,7 +66,8 @@ class AgentOrchestrator:
                     # If google_search returns text, show that
                     if result.get("text"):
                         return {"type": "message", "reply": result.get("text")}
-
+                    if result.get("result"):
+                        return {"type": "message", "reply": str(result.get("result"))}
                     # If notes tool returns notes list
                     if result.get("notes"):
                         notes_text = "\n\n".join(

@@ -130,8 +130,18 @@ class WorkflowExecutor:
         field = match.group(2)
 
         if 0 <= step_id < len(results):
-            value = results[step_id].get(field)
+            step_result = results[step_id]
+
+            value = step_result.get(field)
             if value is not None:
                 return str(value)
+
+    # fallback: if asking for text but tool returned result
+            if field == "text" and step_result.get("result") is not None:
+                return str(step_result.get("result"))
+
+    # fallback: if asking for result but tool returned text
+            if field == "result" and step_result.get("text") is not None:
+                return str(step_result.get("text"))
 
         return match.group(0)
