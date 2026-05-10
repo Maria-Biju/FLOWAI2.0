@@ -12,6 +12,7 @@ from flask_login import (
     logout_user, current_user
 )
 from flask_bcrypt import Bcrypt
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from llm.client import LLMClient
@@ -22,7 +23,6 @@ from models.db import db
 from engine.worker import worker_loop
 import threading
 
-
 # ----------------------
 # App Config
 # ----------------------
@@ -30,10 +30,28 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "supersecretkey")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///users.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-start_scheduler(app)
 
 db.init_app(app)
 bcrypt = Bcrypt(app)
+
+
+def ensure_workflow_schema():
+    with app.app_context():
+        inspector = inspect(db.engine)
+        if not inspector.has_table("workflow"):
+            return
+
+        existing_columns = {row[1] for row in db.session.execute(text("PRAGMA table_info('workflow')"))}
+
+        if "interval_seconds" not in existing_columns:
+            db.session.execute(text("ALTER TABLE workflow ADD COLUMN interval_seconds INTEGER"))
+        if "repeat" not in existing_columns:
+            db.session.execute(text("ALTER TABLE workflow ADD COLUMN repeat BOOLEAN DEFAULT 0"))
+        if "last_run" not in existing_columns:
+            db.session.execute(text("ALTER TABLE workflow ADD COLUMN last_run DATETIME"))
+        db.session.commit()
+
+start_scheduler(app)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
@@ -66,6 +84,49 @@ def load_user(user_id):
 @login_required
 def home():
     return render_template("index.html", username=current_user.username)
+
+
+@app.route("/schedules")
+@login_required
+def schedules():
+    from models.workflow import Workflow
+
+    workflows = Workflow.query.filter(
+        Workflow.repeat == True,
+        Workflow.status.in_(["pending", "queued", "running"])
+    ).order_by(Workflow.created_at.desc()).all()
+    return jsonify([
+        {
+            "id": wf.id,
+            "status": wf.status,
+            "next_run": wf.next_run.isoformat() if wf.next_run else None,
+            "interval_seconds": wf.interval_seconds,
+            "repeat": wf.repeat,
+            "last_run": wf.last_run.isoformat() if wf.last_run else None,
+            "created_at": wf.created_at.isoformat() if wf.created_at else None,
+        }
+        for wf in workflows
+    ])
+
+
+@app.route("/schedules/<int:workflow_id>/cancel", methods=["POST"])
+@login_required
+def cancel_schedule(workflow_id):
+    from models.workflow import Workflow
+    from models.workflow_queue import WorkflowQueue
+
+    workflow = Workflow.query.get(workflow_id)
+    if not workflow:
+        return jsonify({"status": "error", "message": "Schedule not found."}), 404
+
+    if not workflow.repeat:
+        return jsonify({"status": "error", "message": "This workflow is not scheduled."}), 400
+
+    workflow.status = "canceled"
+    WorkflowQueue.query.filter_by(workflow_id=workflow_id, status="queued").update({"status": "canceled"})
+    db.session.commit()
+
+    return jsonify({"status": "success", "message": "Schedule canceled."})
 
 
 @app.route("/chat", methods=["POST"])
@@ -171,6 +232,7 @@ if __name__ == "__main__":
 
     with app.app_context():
         db.create_all()
+        ensure_workflow_schema()
 
     # Start worker thread
     threading.Thread(

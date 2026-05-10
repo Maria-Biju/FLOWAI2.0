@@ -1,4 +1,10 @@
+# agent/workflow_store.py
 import uuid
+import json
+from datetime import datetime
+
+from models.workflow import Workflow
+from models.db import db
 
 WORKFLOWS = {}
 
@@ -24,3 +30,21 @@ def get_workflow(workflow_id):
 def save_step_result(workflow, result):
     workflow["results"].append(result)
     workflow["current_step"] += 1
+
+
+def create_scheduled_workflow(steps, interval_seconds, next_run=None):
+    if next_run is None:
+        next_run = datetime.now()
+
+    workflow = Workflow(
+        workflow_json=json.dumps({"steps": steps}),
+        next_run=next_run,
+        interval_seconds=interval_seconds,
+        repeat=True,
+        status="pending"
+    )
+
+    db.session.add(workflow)
+    db.session.commit()
+
+    return workflow

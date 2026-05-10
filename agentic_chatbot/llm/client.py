@@ -2,16 +2,17 @@ import os
 import json
 import re
 import requests
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 
 class LLMClient:
     """
     Agent-style client.
 
-    Can return:
+    Returns one of:
     1) {"type":"message","reply":"..."}
     2) {"type":"tool_call","tool":"...","arguments":{...}}
+    3) {"type":"workflow","steps":[...]}
     """
 
     def __init__(self):
@@ -20,29 +21,16 @@ class LLMClient:
         self.timeout = int(os.getenv("OLLAMA_TIMEOUT", "180"))
         self.keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "30s")
 
-    def fetch_tools_metadata(self):
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "tools/list",
-            "id": 1
-        }
-
-        r = requests.post("http://127.0.0.1:8001/", json=payload)
-        return r.json()["result"]["tools"]
-
-    # -----------------------
-    # Ollama Call
-    # -----------------------
     def _post_ollama(self, prompt: str) -> str:
         payload = {
             "model": self.ollama_model,
             "prompt": prompt,
             "stream": False,
             "keep_alive": self.keep_alive,
-            "format": "json",  # 🔥 Force strict JSON
+            "format": "json",
             "options": {
                 "temperature": 0.0,
-                "num_predict": 200,
+                "num_predict": 300,
                 "num_ctx": 2048,
             },
         }
@@ -55,9 +43,6 @@ class LLMClient:
         r.raise_for_status()
         return (r.json().get("response") or "").strip()
 
-    # -----------------------
-    # Extract JSON
-    # -----------------------
     def _extract_json(self, text: str) -> Optional[Dict[str, Any]]:
         try:
             return json.loads(text)
@@ -70,122 +55,173 @@ class LLMClient:
                     return None
         return None
 
-    # -----------------------
-    # MAIN AGENT ENTRY
-    # -----------------------
-    def process(self, message: str):
+    def process(self, message: str, tools_metadata: List[Dict[str, Any]]) -> Dict[str, Any]:
+        tool_descriptions = []
 
-        tools = self.fetch_tools_metadata()
-
-        tool_descriptions = ""
-
-        for t in tools:
-
-            tool_descriptions += f"\n{t['name']}\n"
-            tool_descriptions += f"description: {t['description']}\n"
-            tool_descriptions += "arguments:\n"
-
-            props = t["schema"]["properties"]
-
-            tool_descriptions += json.dumps(props, indent=2)
-            tool_descriptions += "\n\n"
+        for t in tools_metadata:
+            block = {
+                "name": t.get("name"),
+                "description": t.get("description"),
+                "schema": t.get("schema", {})
+            }
+            tool_descriptions.append(block)
 
         system_prompt = f"""
 You are FLOWAI Agent.
 
-Available tools:
-{tool_descriptions}
+Available MCP tools:
+{json.dumps(tool_descriptions, indent=2)}
 
 You MUST respond with ONLY valid JSON.
-Do NOT include explanations.
-Do NOT include markdown.
-Do NOT include text before or after the JSON.
-Only include tools that are strictly required to complete the task.
-Do NOT add unnecessary tools.
-Do NOT add steps unrelated to the user's request.
+No markdown.
+No extra explanations.
+No text outside JSON.
 
 Allowed formats:
 
-For multi-step tasks:
-
+For a workflow:
 {{
- "type": "workflow",
- "steps": [
-  {{
-   "step": 1,
-   "tool": "tool_name",
-   "arguments": {{}}
+  "type": "workflow",
+  "steps": [
+    {{
+      "step": 1,
+      "tool": "tool_name",
+      "arguments": {{}}
+    }}
+  ]
+}}
+
+For a single tool call:
+{{
+  "type": "tool_call",
+  "tool": "tool_name",
+  "arguments": {{}}
+}}
+
+For a normal reply:
+{{
+  "type": "message",
+  "reply": "..."
+}}
+
+Rules:
+- Only use tools from the available MCP tools list.
+- If the task needs more than one tool, return a workflow.
+- If the task is simple and only one tool is enough, return tool_call.
+- If no tool is needed, return a normal message.
+
+IMPORTANT WORKFLOW RULES:
+- If one step uses output from an earlier step, you MUST use placeholders in this exact format:
+  {{step1.text}}
+  {{step2.text}}
+  {{step3.text}}
+
+- Use ONLY the field name "text" when passing text output from one tool to another.
+- Do NOT invent custom field names.
+- Do NOT use placeholders like:
+  {{step4.uppercase_test_result}}
+  {{step2.output}}
+  {{step1.answer}}
+- Always use {{stepN.text}} for text-producing tools.
+
+Tools that produce text output include:
+- google_search
+- summarize_text
+- uppercase_text
+
+Examples:
+
+Example 1:
+User: Convert hello world to uppercase
+Response:
+{{
+  "type": "tool_call",
+  "tool": "uppercase_text",
+  "arguments": {{
+    "text": "hello world"
   }}
- ]
 }}
 
-For single tool calls:
-
+Example 2:
+User: Search the largest mountain in the world and send the result to my email
+Response:
 {{
- "type": "tool_call",
- "tool": "tool_name",
- "arguments": {{}}
+  "type": "workflow",
+  "steps": [
+    {{
+      "step": 1,
+      "tool": "google_search",
+      "arguments": {{
+        "query": "largest mountain in the world"
+      }}
+    }},
+    {{
+      "step": 2,
+      "tool": "send_email",
+      "arguments": {{
+        "to": "user@example.com",
+        "subject": "Largest Mountain Search Result",
+        "body": "{{step1.text}}"
+      }}
+    }}
+  ]
 }}
 
-For normal chat:
-
+Example 3:
+User: Search the largest mountain in the world, summarize it, convert it to uppercase, and send it to my email
+Response:
 {{
- "type": "message",
- "reply": "..."
-}}
-
-If the request requires using information from one tool in another tool,
-you MUST return a workflow instead of a single tool call.
-
-When a tool produces information that will be used in another step,
-reference it using {{step1.field}}.
-
-Example:
-Step1: google_search  
-Step2: send_email with body "{{step1.text}}"
-
-Workflows may optionally include a schedule field.
-
-Example:
-
-{{
- "type": "workflow",
- "schedule": {{
-   "type": "once",
-   "run_at": "ISO datetime"
- }},
- "steps": [
-  {{
-   "step": 1,
-   "tool": "tool_name",
-   "arguments": {...}
-  }}
- ]
+  "type": "workflow",
+  "steps": [
+    {{
+      "step": 1,
+      "tool": "google_search",
+      "arguments": {{
+        "query": "largest mountain in the world"
+      }}
+    }},
+    {{
+      "step": 2,
+      "tool": "summarize_text",
+      "arguments": {{
+        "text": "{{step1.text}}"
+      }}
+    }},
+    {{
+      "step": 3,
+      "tool": "uppercase_text",
+      "arguments": {{
+        "text": "{{step2.text}}"
+      }}
+    }},
+    {{
+      "step": 4,
+      "tool": "send_email",
+      "arguments": {{
+        "to": "user@example.com",
+        "subject": "Largest Mountain Result",
+        "body": "{{step3.text}}"
+      }}
+    }}
+  ]
 }}
 """
 
-        prompt = system_prompt + "\nUser: " + message
+        prompt = system_prompt + "\nUser: " + message.strip()
 
         try:
             text = self._post_ollama(prompt)
             print("LLM RAW OUTPUT:\n", text)
+
             obj = self._extract_json(text)
 
             if not obj:
                 return {"type": "message", "reply": "I could not process that."}
 
-            if obj.get("type") == "tool_call":
-                return obj
-
-            if obj.get("type") == "message":
-                return obj
-            if obj.get("type") == "workflow":
+            if obj.get("type") in {"tool_call", "message", "workflow"}:
                 return obj
 
             return {"type": "message", "reply": "Invalid response format."}
 
         except Exception as e:
-            return {
-                "type": "message",
-                "reply": f"LLM error: {str(e)}"
-            }
+            return {"type": "message", "reply": f"LLM error: {str(e)}"}

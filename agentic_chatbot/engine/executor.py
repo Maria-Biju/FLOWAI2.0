@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import datetime, timedelta
 from mcp.client import MCPClient
 from models.workflow import Workflow
 from models.db import db
@@ -32,13 +33,20 @@ def execute_workflow(workflow_id):
 
     workflow = db.session.get(Workflow, workflow_id)
 
+    if not workflow:
+        print("Workflow not found:", workflow_id)
+        return False
+
+    # Ensure tool_server_map is populated by discovering available tools
+    available_tools = mcp.list_tools()
+    print(f"[Executor] Discovered {len(available_tools)} tools")
+
     plan = json.loads(workflow.workflow_json)
 
     results = {}
+    success = True
 
     for step in plan["steps"]:
-
-
         tool = step["tool"]
         args = step["arguments"]
 
@@ -47,13 +55,24 @@ def execute_workflow(workflow_id):
         result = mcp.call_tool(tool, args)
 
         step_key = f"step{step['step']}"
-
         results[step_key] = result
 
         print("Executing:", tool)
         print("Arguments:", args)
         print("Result:", result)
 
-    workflow.status = "completed"
+        if result.get("status") != "success":
+            success = False
+            break
+
+    now = datetime.now()
+    workflow.last_run = now
+
+    if workflow.repeat and workflow.interval_seconds:
+        workflow.next_run = now + timedelta(seconds=workflow.interval_seconds)
+        workflow.status = "pending"
+    else:
+        workflow.status = "completed" if success else "failed"
 
     db.session.commit()
+    return success

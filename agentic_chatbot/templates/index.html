@@ -17,13 +17,18 @@ body{
     background: linear-gradient(135deg,#0f172a,#020617);
     display:flex;
     justify-content:center;
-    align-items:center;
+    align-items:flex-start;
+    padding:20px 0;
+    overflow-y:auto;
     color:white;
 }
 
 /* ===== MAIN CONTAINER ===== */
 .container{
     width:600px;
+    max-height:90vh;
+    overflow-y:auto;
+    padding: 0 20px;
 }
 
 /* ===== TITLE ===== */
@@ -34,9 +39,15 @@ h2{
     color:#e2e8f0;
 }
 
+h3{
+    font-size:16px;
+    font-weight:600;
+    color:#e2e8f0;
+}
+
 /* ===== CHATBOX ===== */
 #chatbox{
-    height:420px;
+    height:350px;
     background: rgba(255,255,255,0.05);
     backdrop-filter: blur(14px);
     border:1px solid rgba(255,255,255,0.08);
@@ -51,11 +62,16 @@ h2{
 
 /* scrollbar */
 #chatbox::-webkit-scrollbar{
-    width:6px;
+    width:0;
+    display:none;
 }
 #chatbox::-webkit-scrollbar-thumb{
     background:#334155;
     border-radius:10px;
+}
+#chatbox {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
 /* ===== MESSAGES ===== */
@@ -127,6 +143,54 @@ button:hover{
 button:active{
     transform:scale(0.96);
 }
+.small-btn {
+    padding:10px 14px;
+    border-radius:12px;
+    background:linear-gradient(135deg,#38bdf8,#0ea5e9);
+    font-size:13px;
+}
+.schedule-panel {
+    margin-top:20px;
+    margin-bottom:30px;
+    background: rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:18px;
+    padding:18px;
+    max-height:300px;
+    overflow-y:auto;
+}
+.schedule-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    margin-bottom:12px;
+    position:sticky;
+    top:0;
+    background: rgba(255,255,255,0.06);
+    padding-bottom:10px;
+}
+.schedule-list {
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+}
+.schedule-item {
+    padding:14px;
+    border-radius:16px;
+    background:rgba(15,23,42,0.8);
+    border:1px solid rgba(148,163,184,0.15);
+}
+.schedule-item p {
+    margin-bottom:8px;
+    font-size:13px;
+    color:#cbd5e1;
+}
+.schedule-item button {
+    background:linear-gradient(135deg,#ef4444,#dc2626);
+    font-size:12px;
+    padding:8px 12px;
+}
 /* ===== LOGOUT BUTTON TOP RIGHT ===== */
 .logout-btn{
     position:absolute;
@@ -168,6 +232,14 @@ button:active{
     <div class="input-area">
         <input type="text" id="message" placeholder="Type a message..." />
         <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <div class="schedule-panel">
+        <div class="schedule-header">
+            <h3>Active Schedules</h3>
+            <button class="small-btn" onclick="loadSchedules()">Refresh</button>
+        </div>
+        <div id="schedule-list" class="schedule-list">Loading schedules...</div>
     </div>
 </div>
 
@@ -211,6 +283,65 @@ button:active{
             chatbox.innerHTML += `<div class="bot">${data.reply}</div>`;
             chatbox.scrollTop = chatbox.scrollHeight;
         }
+
+        async function loadSchedules() {
+            const list = document.getElementById("schedule-list");
+            list.innerHTML = "Loading schedules...";
+
+            try {
+                const response = await fetch("/schedules");
+                const schedules = await response.json();
+
+                if (!Array.isArray(schedules) || schedules.length === 0) {
+                    list.innerHTML = "<div class='bot'>No active schedules.</div>";
+                    return;
+                }
+
+                list.innerHTML = schedules.map(workflow => {
+                    const nextRun = workflow.next_run ? new Date(workflow.next_run).toLocaleString() : "N/A";
+                    const lastRun = workflow.last_run ? new Date(workflow.last_run).toLocaleString() : "Never";
+                    const interval = workflow.interval_seconds ? `${workflow.interval_seconds} sec` : "N/A";
+
+                    return `
+                        <div class="schedule-item">
+                            <p><strong>ID:</strong> ${workflow.id}</p>
+                            <p><strong>Status:</strong> ${workflow.status}</p>
+                            <p><strong>Next run:</strong> ${nextRun}</p>
+                            <p><strong>Last run:</strong> ${lastRun}</p>
+                            <p><strong>Interval:</strong> ${interval}</p>
+                            <button onclick="cancelSchedule(${workflow.id})">Cancel schedule</button>
+                        </div>
+                    `;
+                }).join("");
+            } catch (error) {
+                list.innerHTML = "<div class='bot'>Unable to load schedules.</div>";
+                console.error(error);
+            }
+        }
+
+        async function cancelSchedule(workflowId) {
+            if (!confirm("Cancel this schedule?")) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/schedules/${workflowId}/cancel`, {
+                    method: "POST"
+                });
+                const result = await response.json();
+
+                if (result.status === "success") {
+                    loadSchedules();
+                } else {
+                    alert(result.message || "Unable to cancel schedule.");
+                }
+            } catch (error) {
+                alert("Cancel request failed.");
+                console.error(error);
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", loadSchedules);
     </script>
 
 </body>

@@ -9,17 +9,16 @@ def check_workflows(app):
 
     with app.app_context():
 
+        now = datetime.now()
+
         workflows = Workflow.query.filter(
             Workflow.status == "pending",
-            Workflow.next_run <= datetime.utcnow()
+            Workflow.next_run <= now
         ).all()
 
         for wf in workflows:
-
             job = WorkflowQueue(workflow_id=wf.id)
-
             db.session.add(job)
-
             wf.status = "queued"
 
         db.session.commit()
@@ -36,7 +35,9 @@ def start_scheduler(app):
         check_workflows,
         "interval",
         seconds=30,
-        args=[app]
+        args=[app],
+        id="workflow_scheduler",
+        replace_existing=True
     )
 
     scheduler.start()

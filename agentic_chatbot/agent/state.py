@@ -5,12 +5,13 @@ from typing import Optional, Dict, Any
 class ConversationState:
     """
     Per-conversation memory (in RAM).
-    Keep this minimal so it doesn't conflict with other modules.
+    Used by the agent to store pending tool calls / workflows
+    before confirmation.
     """
     def __init__(self):
-        self.pending_action: Optional[str] = None  # e.g., "email_confirm"
-        self.data: Dict[str, Any] = {}            # generic storage (future use)
-
-        # Email-specific
-        self.pending_email: Optional[Dict[str, str]] = None
-        self.pending_email_meta: Dict[str, Any] = {}  # optional metadata (future)
+        self.pending_action: Optional[str] = None
+        self.pending_payload: Optional[Dict[str, Any]] = None
+        self.data: Dict[str, Any] = {}
+        
+        self.last_result: Optional[Dict[str, Any]] = None
+        self.preview_text: Optional[str] = None
