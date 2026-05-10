@@ -3,7 +3,7 @@ import re
 
 
 class WorkflowExecutor:
-    SAFE_PREVIEW_TOOLS = {"google_search", "get_all_notes"}
+    SAFE_PREVIEW_TOOLS = {"google_search", "get_all_notes", "summarize_text", "uppercase_text"}
 
     def __init__(self, mcp_client):
         self.mcp = mcp_client
