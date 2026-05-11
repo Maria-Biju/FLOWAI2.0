@@ -51,7 +51,26 @@ def ensure_workflow_schema():
             db.session.execute(text("ALTER TABLE workflow ADD COLUMN last_run DATETIME"))
         db.session.commit()
 
+with app.app_context():
+    db.create_all()
+    ensure_workflow_schema()
+
 start_scheduler(app)
+
+worker_thread = None
+worker_started = False
+
+@app.before_first_request
+def initialize_worker():
+    global worker_thread, worker_started
+    if not worker_started:
+        worker_thread = threading.Thread(
+            target=worker_loop,
+            args=(app,),
+            daemon=True
+        )
+        worker_thread.start()
+        worker_started = True
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
@@ -229,16 +248,4 @@ def logout():
 # Boot
 # ----------------------
 if __name__ == "__main__":
-
-    with app.app_context():
-        db.create_all()
-        ensure_workflow_schema()
-
-    # Start worker thread
-    threading.Thread(
-        target=worker_loop,
-        args=(app,),
-        daemon=True
-    ).start()
-
     app.run(debug=True, use_reloader=False, port=8000)

@@ -81,29 +81,53 @@ class MCPClient:
         Route tool call to the correct MCP server.
         If tool routing is unknown, fallback to local MCP server.
         """
-        server_url = self.tool_server_map.get(tool_name, self.base_url)
+        server_url = self.tool_server_map.get(tool_name)
+        if not server_url:
+            self.list_tools()
+            server_url = self.tool_server_map.get(tool_name)
 
-        try:
-            data = self._rpc(
-                server_url,
-                "tools/call",
-                {
-                    "name": tool_name,
-                    "arguments": arguments
-                }
-            )
+        candidate_servers = []
+        if server_url:
+            candidate_servers.append(server_url)
 
-            if "error" in data:
-                return {
-                    "status": "error",
-                    "message": data["error"].get("message", "Unknown error")
-                }
+        candidate_servers.extend([self.base_url] + [url for url in self.external_servers if url != self.base_url])
 
-            result = data.get("result")
-            if result is None:
-                return {"status": "error", "message": "Tool returned no result"}
+        last_error = None
+        attempted = set()
 
-            return result
+        for url in candidate_servers:
+            if url in attempted:
+                continue
+            attempted.add(url)
 
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+            try:
+                data = self._rpc(
+                    url,
+                    "tools/call",
+                    {
+                        "name": tool_name,
+                        "arguments": arguments
+                    }
+                )
+
+                if "error" in data:
+                    error_message = data["error"].get("message", "Unknown error")
+                    if error_message == "Tool not found":
+                        continue
+                    return {
+                        "status": "error",
+                        "message": error_message
+                    }
+
+                result = data.get("result")
+                if result is None:
+                    return {"status": "error", "message": "Tool returned no result"}
+
+                return result
+
+            except Exception as e:
+                last_error = e
+                continue
+
+        message = str(last_error) if last_error else f"Tool not found: {tool_name}"
+        return {"status": "error", "message": message}

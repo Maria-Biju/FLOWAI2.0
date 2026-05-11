@@ -47,4 +47,12 @@ def create_scheduled_workflow(steps, interval_seconds, next_run=None):
     db.session.add(workflow)
     db.session.commit()
 
+    # If the workflow should run immediately, enqueue it right away rather than waiting for the scheduler interval.
+    if next_run <= datetime.now():
+        from models.workflow_queue import WorkflowQueue
+
+        workflow.status = "queued"
+        db.session.add(WorkflowQueue(workflow_id=workflow.id))
+        db.session.commit()
+
     return workflow
